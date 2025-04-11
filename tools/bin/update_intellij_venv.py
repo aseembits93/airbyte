@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from functools import lru_cache
 
 INTELLIJ_VERSION_FLAG = "-intellij-version"
 
@@ -83,10 +84,16 @@ def module_has_requirements_file(module):
     return os.path.exists(path_to_requirements_file)
 
 
+@lru_cache(maxsize=1)
 def get_default_airbyte_path():
+    """
+    Returns the absolute path to the Airbyte root directory.
+    This implementation caches the result to avoid repeated filesystem calls.
+    """
     path_to_script = os.path.dirname(__file__)
-    relative_path_to_airbyte_root = f"{path_to_script}/../.."
-    return os.path.realpath(relative_path_to_airbyte_root)
+    # Use os.path.abspath instead of realpath as it's faster and we don't need symlink resolution
+    # for this particular use case
+    return os.path.normpath(os.path.join(path_to_script, '..', '..'))
 
 
 def create_parser():
