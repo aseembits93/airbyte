@@ -3,6 +3,7 @@
 #
 
 import argparse
+import functools
 import os
 import subprocess
 import sys
@@ -89,30 +90,55 @@ def get_default_airbyte_path():
     return os.path.realpath(relative_path_to_airbyte_root)
 
 
+@functools.lru_cache(maxsize=1)
 def create_parser():
+    """
+    Creates and returns an argument parser for the update_intellij_venv script.
+    This function is cached to avoid recreating the parser on multiple calls.
+    """
+    # Pre-create the default airbyte path value to avoid recalculation in the parser setup
+    default_airbyte_path = get_default_airbyte_path()
+    
     parser = argparse.ArgumentParser(description="Prepare Python virtual environments for Python connectors")
+    
+    # Create all argument groups at once
     actions_group = parser.add_argument_group("actions")
+    modules_group = parser.add_mutually_exclusive_group(required=True)
+    intellij_group = parser.add_argument_group("Update intelliJ")
+    
+    # Add arguments to actions group
     actions_group.add_argument(
         "--install-venv", action="store_true", help="Create virtual environment and install the module's dependencies"
     )
-    actions_group.add_argument("--update-intellij", action="store_true", help="Add interpreter to IntelliJ's list of known interpreters")
-
-    parser.add_argument("-airbyte", default=get_default_airbyte_path(), help="Path to Airbyte root directory")
-
-    modules_group = parser.add_mutually_exclusive_group(required=True)
+    actions_group.add_argument(
+        "--update-intellij", action="store_true", help="Add interpreter to IntelliJ's list of known interpreters"
+    )
+    
+    # Add airbyte path argument
+    parser.add_argument("-airbyte", default=default_airbyte_path, help="Path to Airbyte root directory")
+    
+    # Add module selection arguments
     modules_group.add_argument("-modules", nargs="?", help="Comma separated list of modules to add (eg source-strava,source-stripe)")
     modules_group.add_argument("--all-modules", action="store_true", help="Select all Python connector modules")
-
-    group = parser.add_argument_group("Update intelliJ")
-
-    group.add_argument("-input", help="Path to input IntelliJ's jdk table")
-    group.add_argument("-output", help="Path to output jdk table")
-    group.add_argument(INTELLIJ_VERSION_FLAG, help="IntelliJ version to update (Only required if multiple versions are installed)")
-
+    
+    # Add IntelliJ update arguments
+    intellij_group.add_argument("-input", help="Path to input IntelliJ's jdk table")
+    intellij_group.add_argument("-output", help="Path to output jdk table")
+    intellij_group.add_argument(INTELLIJ_VERSION_FLAG, help="IntelliJ version to update (Only required if multiple versions are installed)")
+    
     return parser
 
 
 def parse_args(args):
+    """
+    Parse command line arguments using the cached parser.
+    
+    Args:
+        args: Command line arguments to parse
+    
+    Returns:
+        Parsed arguments namespace
+    """
     parser = create_parser()
     return parser.parse_args(args)
 
