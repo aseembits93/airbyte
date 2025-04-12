@@ -88,30 +88,18 @@ class HttpClient:
         message_repository: Optional[MessageRepository] = None,
     ):
         self._name = name
-        self._api_budget: APIBudget = api_budget or APIBudget(policies=[])
-        if session:
-            self._session = session
-        else:
-            self._use_cache = use_cache
-            self._session = self._request_session()
-            self._session.mount(
-                "https://", requests.adapters.HTTPAdapter(pool_connections=MAX_CONNECTION_POOL_SIZE, pool_maxsize=MAX_CONNECTION_POOL_SIZE)
-            )
-        if isinstance(authenticator, AuthBase):
-            self._session.auth = authenticator
         self._logger = logger
         self._error_handler = error_handler or HttpStatusErrorHandler(self._logger)
-        if backoff_strategy is not None:
-            if isinstance(backoff_strategy, list):
-                self._backoff_strategies = backoff_strategy
-            else:
-                self._backoff_strategies = [backoff_strategy]
-        else:
-            self._backoff_strategies = [DefaultBackoffStrategy()]
+        self._api_budget: APIBudget = api_budget or APIBudget(policies=[])
+        self._use_cache = use_cache
+        self._session = self._init_session(session, use_cache)
+        if isinstance(authenticator, AuthBase):
+            self._session.auth = authenticator
+        self._backoff_strategies = self._init_backoff_strategy(backoff_strategy)
         self._error_message_parser = error_message_parser or JsonErrorMessageParser()
-        self._request_attempt_count: Dict[requests.PreparedRequest, int] = {}
         self._disable_retries = disable_retries
         self._message_repository = message_repository
+        self._request_attempt_count: Dict[requests.PreparedRequest, int] = {}
 
     @property
     def cache_filename(self) -> str:
@@ -152,13 +140,10 @@ class HttpClient:
         :param params:
         :return:
         """
-        if params is None:
-            params = {}
-        query_string = urllib.parse.urlparse(url).query
-        query_dict = {k: v[0] for k, v in urllib.parse.parse_qs(query_string).items()}
-
-        duplicate_keys_with_same_value = {k for k in query_dict.keys() if str(params.get(k)) == str(query_dict[k])}
-        return {k: v for k, v in params.items() if k not in duplicate_keys_with_same_value}
+        if params:
+            query_dict = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            return {k: v for k, v in params.items() if k not in query_dict or str(params[k]) != str(query_dict[k][0])}
+        return params or {}
 
     def _create_prepared_request(
         self,
@@ -394,3 +379,20 @@ class HttpClient:
         )
 
         return request, response
+
+    def _init_session(self, session: Optional[Union[requests.Session, requests_cache.CachedSession]], use_cache: bool) -> requests.Session:
+        if session:
+            return session
+
+        session = self._request_session()
+        session.mount(
+            "https://", requests.adapters.HTTPAdapter(pool_connections=MAX_CONNECTION_POOL_SIZE, pool_maxsize=MAX_CONNECTION_POOL_SIZE)
+        )
+        return session
+
+    def _init_backoff_strategy(self, backoff_strategy: Optional[Union[BackoffStrategy, List[BackoffStrategy]]]) -> List[BackoffStrategy]:
+        if backoff_strategy is None:
+            return [DefaultBackoffStrategy()]
+        if isinstance(backoff_strategy, list):
+            return backoff_strategy
+        return [backoff_strategy]
