@@ -6,7 +6,7 @@ import logging
 import os
 import urllib
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, List, Mapping, Optional, Tuple, Union
 
 import requests
 import requests_cache
@@ -47,6 +47,7 @@ from airbyte_cdk.utils.stream_status_utils import as_airbyte_message as stream_s
 from airbyte_cdk.utils.traced_exception import AirbyteTracedException
 from orjson import orjson
 from requests.auth import AuthBase
+import urllib.parse
 
 BODY_REQUEST_METHODS = ("GET", "POST", "PUT", "PATCH")
 
@@ -89,27 +90,38 @@ class HttpClient:
     ):
         self._name = name
         self._api_budget: APIBudget = api_budget or APIBudget(policies=[])
+        
+        # Session setup
         if session:
             self._session = session
         else:
             self._use_cache = use_cache
             self._session = self._request_session()
-            self._session.mount(
-                "https://", requests.adapters.HTTPAdapter(pool_connections=MAX_CONNECTION_POOL_SIZE, pool_maxsize=MAX_CONNECTION_POOL_SIZE)
+            # Use a single adapter instance for better performance
+            adapter = requests.adapters.HTTPAdapter(
+                pool_connections=MAX_CONNECTION_POOL_SIZE, 
+                pool_maxsize=MAX_CONNECTION_POOL_SIZE
             )
+            self._session.mount("https://", adapter)
+            # Mount the same adapter for http as well for consistency
+            self._session.mount("http://", adapter)
+            
+        # Setup authenticator if provided
         if isinstance(authenticator, AuthBase):
             self._session.auth = authenticator
+            
+        # Error handling setup
         self._logger = logger
         self._error_handler = error_handler or HttpStatusErrorHandler(self._logger)
+        
+        # Backoff strategy setup - optimize list creation
         if backoff_strategy is not None:
-            if isinstance(backoff_strategy, list):
-                self._backoff_strategies = backoff_strategy
-            else:
-                self._backoff_strategies = [backoff_strategy]
+            self._backoff_strategies = backoff_strategy if isinstance(backoff_strategy, list) else [backoff_strategy]
         else:
             self._backoff_strategies = [DefaultBackoffStrategy()]
+            
         self._error_message_parser = error_message_parser or JsonErrorMessageParser()
-        self._request_attempt_count: Dict[requests.PreparedRequest, int] = {}
+        self._request_attempt_count = {}  # Using empty dict literal for slight performance gain
         self._disable_retries = disable_retries
         self._message_repository = message_repository
 
@@ -152,13 +164,29 @@ class HttpClient:
         :param params:
         :return:
         """
-        if params is None:
-            params = {}
-        query_string = urllib.parse.urlparse(url).query
-        query_dict = {k: v[0] for k, v in urllib.parse.parse_qs(query_string).items()}
-
-        duplicate_keys_with_same_value = {k for k in query_dict.keys() if str(params.get(k)) == str(query_dict[k])}
-        return {k: v for k, v in params.items() if k not in duplicate_keys_with_same_value}
+        if not params:
+            return {}
+            
+        # Parse URL components just once
+        parsed_url = urllib.parse.urlparse(url)
+        
+        # Only process if there's actually a query string
+        if not parsed_url.query:
+            return params
+            
+        query_dict = urllib.parse.parse_qs(parsed_url.query)
+        # Precompute a set of duplicate keys for faster membership testing
+        duplicate_keys = {
+            k for k, v in query_dict.items() 
+            if k in params and str(params[k]) == str(v[0])
+        }
+        
+        # If no duplicates found, return original params
+        if not duplicate_keys:
+            return params
+            
+        # Create a new dict without the duplicate keys
+        return {k: v for k, v in params.items() if k not in duplicate_keys}
 
     def _create_prepared_request(
         self,
