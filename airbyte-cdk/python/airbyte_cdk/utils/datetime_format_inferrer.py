@@ -29,22 +29,19 @@ class DatetimeFormatInferrer:
             "%Y-%m",
             "%d-%m-%Y",
         ]
-        self._timestamp_heuristic_ranges = [range(1_000_000_000, 2_000_000_000), range(1_000_000_000_000, 2_000_000_000_000)]
+        self._timestamp_heuristic_ranges = [(1_000_000_000, 2_000_000_000), (1_000_000_000_000, 2_000_000_000_000)]
 
     def _can_be_datetime(self, value: Any) -> bool:
         """Checks if the value can be a datetime.
         This is the case if the value is a string or an integer between 1_000_000_000 and 2_000_000_000 for seconds
         or between 1_000_000_000_000 and 2_000_000_000_000 for milliseconds.
         This is separate from the format check for performance reasons"""
-        if isinstance(value, (str, int)):
-            try:
-                value_as_int = int(value)
-                for timestamp_range in self._timestamp_heuristic_ranges:
-                    if value_as_int in timestamp_range:
-                        return True
-            except ValueError:
-                # given that it's not parsable as an int, it can represent a datetime with one of the self._formats
-                return True
+        if isinstance(value, int):
+            return self._is_within_ranges(value)
+        elif isinstance(value, str):
+            if value.isdigit():
+                return self._is_within_ranges(int(value))
+            return True
         return False
 
     def _matches_format(self, value: Any, format: str) -> bool:
@@ -89,3 +86,10 @@ class DatetimeFormatInferrer:
         For these fields the format was consistent across all visited records.
         """
         return self._datetime_candidates or {}
+    
+    def _is_within_ranges(self, value: int) -> bool:
+        """Check if the integer value falls within any of the heuristic timestamp ranges."""
+        for start, end in self._timestamp_heuristic_ranges:
+            if start <= value < end:
+                return True
+        return False
