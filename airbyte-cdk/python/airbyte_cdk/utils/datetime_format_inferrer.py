@@ -14,7 +14,9 @@ class DatetimeFormatInferrer:
     """
 
     def __init__(self) -> None:
-        self._parser = DatetimeParser()
+        # The parser is potentially unused in the optimized snippet provided,
+        # but kept here as it might be used by other methods in the original class.
+        self._parser = DatetimeParser() 
         self._datetime_candidates: Optional[Dict[str, str]] = None
         self._formats = [
             "%Y-%m-%d",
@@ -29,6 +31,7 @@ class DatetimeFormatInferrer:
             "%Y-%m",
             "%d-%m-%Y",
         ]
+        # Pre-calculating ranges can be slightly more efficient if __init__ is called less often than _can_be_datetime
         self._timestamp_heuristic_ranges = [range(1_000_000_000, 2_000_000_000), range(1_000_000_000_000, 2_000_000_000_000)]
 
     def _can_be_datetime(self, value: Any) -> bool:
@@ -36,15 +39,41 @@ class DatetimeFormatInferrer:
         This is the case if the value is a string or an integer between 1_000_000_000 and 2_000_000_000 for seconds
         or between 1_000_000_000_000 and 2_000_000_000_000 for milliseconds.
         This is separate from the format check for performance reasons"""
-        if isinstance(value, (str, int)):
-            try:
-                value_as_int = int(value)
-                for timestamp_range in self._timestamp_heuristic_ranges:
-                    if value_as_int in timestamp_range:
-                        return True
-            except ValueError:
-                # given that it's not parsable as an int, it can represent a datetime with one of the self._formats
+
+        # Check for integer type first, as it's common and direct
+        if isinstance(value, int):
+            # Check if the integer falls within any defined timestamp heuristic range
+            for timestamp_range in self._timestamp_heuristic_ranges:
+                # range check is O(1)
+                if value in timestamp_range:
+                    return True
+            # Integer is not within the timestamp ranges
+            return False
+
+        # Check for string type
+        if isinstance(value, str):
+            # Use isdigit() for a fast check if the string represents an integer
+            # This avoids the overhead of try-except ValueError for non-numeric strings
+            if value.isdigit():
+                try:
+                    # Convert numeric string to int for range checking
+                    value_as_int = int(value)
+                    # Check if the integer representation falls within timestamp ranges
+                    for timestamp_range in self._timestamp_heuristic_ranges:
+                        if value_as_int in timestamp_range:
+                            return True
+                    # Numeric string, but not within the timestamp ranges
+                    return False
+                except ValueError:
+                    # This case is unlikely if isdigit() is true, but handles potential
+                    # overflow or other edge cases during int conversion defensively.
+                    # If conversion fails, treat it like a non-numeric string.
+                    return True
+            else:
+                # It's a non-numeric string. Assume it could be a standard datetime format string.
                 return True
+
+        # Value is not an int or str, so it cannot be a datetime candidate by these rules
         return False
 
     def _matches_format(self, value: Any, format: str) -> bool:
