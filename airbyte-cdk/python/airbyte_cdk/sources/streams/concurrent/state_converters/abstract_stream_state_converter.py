@@ -81,7 +81,18 @@ class AbstractStreamStateConverter(ABC):
 
     @staticmethod
     def is_state_message_compatible(state: MutableMapping[str, Any]) -> bool:
-        return bool(state) and state.get("state_type") in [t.value for t in ConcurrencyCompatibleStateType]
+        # Right now state.get("state_type") and [t.value for t in ConcurrencyCompatibleStateType] are being called repeatedly
+        # However, their results don't change in each function call so we can optimize by reducing calls to them
+        # Collect all ConcurrencyCompatibleStateType values only once
+        if not state:
+            return False
+        state_type = state.get("state_type")
+        # Assuming ConcurrencyCompatibleStateType is a known object with value as an attribute in each of its members
+        concurrency_compatible_types = getattr(AbstractStreamStateConverter, '_concurrency_compatible_types', None)
+        if concurrency_compatible_types is None:
+            concurrency_compatible_types = [t.value for t in ConcurrencyCompatibleStateType]
+            AbstractStreamStateConverter._concurrency_compatible_types = concurrency_compatible_types
+        return state_type in concurrency_compatible_types
 
     @abstractmethod
     def convert_from_sequential_state(
