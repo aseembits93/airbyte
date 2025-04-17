@@ -153,6 +153,11 @@ class AsyncJobOrchestrator:
 
         self._non_breaking_exceptions: List[Exception] = []
 
+        # Precompute these for faster access in the _is_breaking_exception method
+        self._exceptions_to_break_on_types = tuple(self._exceptions_to_break_on)
+        self._airbyte_traced_exception_type = AirbyteTracedException
+        self._config_error_type = FailureType.config_error
+
     def _replace_failed_jobs(self, partition: AsyncPartition) -> None:
         failed_status_jobs = (AsyncJobStatus.FAILED, AsyncJobStatus.TIMED_OUT)
         jobs_to_replace = [job for job in partition.jobs if job.status() in failed_status_jobs]
@@ -424,9 +429,15 @@ class AsyncJobOrchestrator:
         self._running_partitions = []
 
     def _is_breaking_exception(self, exception: Exception) -> bool:
-        return isinstance(exception, self._exceptions_to_break_on) or (
-            isinstance(exception, AirbyteTracedException) and exception.failure_type == FailureType.config_error
-        )
+        """
+        Determines if an exception should be considered as a breaking exception which implies that the orchestrator
+        should stop immediately when encountered.
+        """
+        if isinstance(exception, self._exceptions_to_break_on_types):
+            return True
+        if isinstance(exception, self._airbyte_traced_exception_type) and exception.failure_type == self._config_error_type:
+            return True
+        return False
 
     def fetch_records(self, partition: AsyncPartition) -> Iterable[Mapping[str, Any]]:
         """
