@@ -31,7 +31,10 @@ class AbstractStreamFacade(Generic[StreamType], ABC):
         :param exception: The exception that was raised
         :return: A user-friendly message that indicates the cause of the error
         """
+        # Check if the exception is an instance of ExceptionWithDisplayMessage
+        # This is the standard and efficient way to perform type checking in Python.
         if isinstance(exception, ExceptionWithDisplayMessage):
+            # Directly access the display_message attribute if the type matches.
             return exception.display_message
-        else:
-            return None
+        # If the exception is not of the expected type, return None.
+        return None
