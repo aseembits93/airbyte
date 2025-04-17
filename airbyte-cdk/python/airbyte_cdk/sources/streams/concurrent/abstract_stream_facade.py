@@ -31,7 +31,4 @@ class AbstractStreamFacade(Generic[StreamType], ABC):
         :param exception: The exception that was raised
         :return: A user-friendly message that indicates the cause of the error
         """
-        if isinstance(exception, ExceptionWithDisplayMessage):
-            return exception.display_message
-        else:
-            return None
+        return exception.display_message if isinstance(exception, ExceptionWithDisplayMessage) else None
