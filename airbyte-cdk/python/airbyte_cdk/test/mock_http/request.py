@@ -2,13 +2,17 @@
 
 import json
 from typing import Any, List, Mapping, Optional, Union
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import ParseResult, parse_qs, urlencode, urlparse
 
 ANY_QUERY_PARAMS = "any query_parameters"
 
 
 def _is_subdict(small: Mapping[str, str], big: Mapping[str, str]) -> bool:
-    return dict(big, **small) == big
+    # Check if every key-value pair in 'small' exists and matches in 'big'
+    for k, v in small.items():
+        if big.get(k) != v:
+            return False
+    return True
 
 
 class HttpRequest:
@@ -19,15 +23,16 @@ class HttpRequest:
         headers: Optional[Mapping[str, str]] = None,
         body: Optional[Union[str, bytes, Mapping[str, Any]]] = None,
     ) -> None:
-        self._parsed_url = urlparse(url)
-        self._query_params = query_params
-        if not self._parsed_url.query and query_params:
-            self._parsed_url = urlparse(f"{url}?{self._encode_qs(query_params)}")
-        elif self._parsed_url.query and query_params:
-            raise ValueError("If query params are provided as part of the url, `query_params` should be empty")
+        self._parsed_url: ParseResult = urlparse(url)
+        self._headers: Mapping[str, str] = headers or {}
+        self._body: Optional[Union[str, bytes, Mapping[str, Any]]] = body
 
-        self._headers = headers or {}
-        self._body = body
+        if query_params:
+            if self._parsed_url.query:
+                raise ValueError("If query params are provided as part of the url, `query_params` should be empty")
+            self._parsed_url = self._parsed_url._replace(
+                query=self._encode_qs(query_params)
+            )
 
     @staticmethod
     def _encode_qs(query_params: Union[str, Mapping[str, Union[str, List[str]]]]) -> str:
