@@ -2,7 +2,7 @@
 
 import json
 from typing import Any, List, Mapping, Optional, Union
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import ParseResult, parse_qs, urlencode, urlparse
 
 ANY_QUERY_PARAMS = "any query_parameters"
 
@@ -19,15 +19,18 @@ class HttpRequest:
         headers: Optional[Mapping[str, str]] = None,
         body: Optional[Union[str, bytes, Mapping[str, Any]]] = None,
     ) -> None:
-        self._parsed_url = urlparse(url)
-        self._query_params = query_params
-        if not self._parsed_url.query and query_params:
-            self._parsed_url = urlparse(f"{url}?{self._encode_qs(query_params)}")
-        elif self._parsed_url.query and query_params:
-            raise ValueError("If query params are provided as part of the url, `query_params` should be empty")
+        parsed_url = urlparse(url)
+        if query_params:
+            if parsed_url.query:
+                raise ValueError("If query params are provided as part of the url, `query_params` should be empty")
+            # Use local static method for query serialization, avoiding unnecessary attribute assignment before.
+            parsed_url = parsed_url._replace(
+                query=self._encode_qs(query_params)
+            )
 
-        self._headers = headers or {}
-        self._body = body
+        self._parsed_url: ParseResult = parsed_url
+        self._headers: Mapping[str, str] = headers if headers is not None else {}
+        self._body: Optional[Union[str, bytes, Mapping[str, Any]]] = body
 
     @staticmethod
     def _encode_qs(query_params: Union[str, Mapping[str, Union[str, List[str]]]]) -> str:
@@ -63,12 +66,13 @@ class HttpRequest:
 
     @staticmethod
     def _to_mapping(body: Optional[Union[str, bytes, Mapping[str, Any]]]) -> Optional[Mapping[str, Any]]:
-        if isinstance(body, Mapping):
+        # Most common case is likely string body, check first for better average performance.
+        if isinstance(body, str):
+            return json.loads(body)  # type: ignore
+        elif isinstance(body, Mapping):
             return body
         elif isinstance(body, bytes):
-            return json.loads(body.decode())  # type: ignore  # assumes return type of Mapping[str, Any]
-        elif isinstance(body, str):
-            return json.loads(body)  # type: ignore  # assumes return type of Mapping[str, Any]
+            return json.loads(body.decode())  # type: ignore
         return None
 
     @staticmethod
