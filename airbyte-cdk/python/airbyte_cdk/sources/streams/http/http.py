@@ -38,24 +38,10 @@ class HttpStream(Stream, CheckpointMixin, ABC):
     page_size: Optional[int] = None  # Use this variable to define page size for API http requests with pagination support
 
     def __init__(self, authenticator: Optional[AuthBase] = None, api_budget: Optional[APIBudget] = None):
-        self._exit_on_rate_limit: bool = False
-        self._http_client = HttpClient(
-            name=self.name,
-            logger=self.logger,
-            error_handler=self.get_error_handler(),
-            api_budget=api_budget or APIBudget(policies=[]),
-            authenticator=authenticator,
-            use_cache=self.use_cache,
-            backoff_strategy=self.get_backoff_strategy(),
-            message_repository=InMemoryMessageRepository(),
-        )
+        self._initialize_http_client(authenticator, api_budget)
 
-        # There are three conditions that dictate if RFR should automatically be applied to a stream
-        # 1. Streams that explicitly initialize their own cursor should defer to it and not automatically apply RFR
-        # 2. Streams with at least one cursor_field are incremental and thus a superior sync to RFR.
-        # 3. Streams overriding read_records() do not guarantee that they will call the parent implementation which can perform
-        #    per-page checkpointing so RFR is only supported if a stream use the default `HttpStream.read_records()` method
-        if not self.cursor and len(self.cursor_field) == 0 and type(self).read_records is HttpStream.read_records:
+        # Optimize cursor initialization logic
+        if not self.cursor and not self.cursor_field and type(self).read_records is HttpStream.read_records:
             self.cursor = ResumableFullRefreshCursor()
 
     @property
@@ -281,30 +267,9 @@ class HttpStream(Stream, CheckpointMixin, ABC):
         :param response:
         :return: A user-friendly message that indicates the cause of the error
         """
-
-        # default logic to grab error from common fields
-        def _try_get_error(value: Optional[JsonType]) -> Optional[str]:
-            if isinstance(value, str):
-                return value
-            elif isinstance(value, list):
-                errors_in_value = [_try_get_error(v) for v in value]
-                return ", ".join(v for v in errors_in_value if v is not None)
-            elif isinstance(value, dict):
-                new_value = (
-                    value.get("message")
-                    or value.get("messages")
-                    or value.get("error")
-                    or value.get("errors")
-                    or value.get("failures")
-                    or value.get("failure")
-                    or value.get("detail")
-                )
-                return _try_get_error(new_value)
-            return None
-
         try:
             body = response.json()
-            return _try_get_error(body)
+            return cls._try_get_error(body)
         except requests.exceptions.JSONDecodeError:
             return None
 
@@ -472,6 +437,37 @@ class HttpStream(Stream, CheckpointMixin, ABC):
 
         :return Optional[Callable[[requests.Response], Any]]: Function that will be used in logging inside HttpClient
         """
+        return None
+
+    def _initialize_http_client(self, authenticator: Optional[AuthBase], api_budget: Optional[APIBudget]):
+        self._http_client = HttpClient(
+            name=self.name,
+            logger=self.logger,
+            error_handler=self.get_error_handler(),
+            api_budget=api_budget or APIBudget(policies=[]),
+            authenticator=authenticator,
+            use_cache=self.use_cache,
+            backoff_strategy=self.get_backoff_strategy(),
+            message_repository=InMemoryMessageRepository(),
+        )
+
+    @staticmethod
+    def _try_get_error(value: Optional[JsonType]) -> Optional[str]:
+        """
+        Recursively tries to extract an error message from the JSON response body.
+        
+        :param value: Parsed JSON response body
+        :return: Extracted error message, or None if not found
+        """
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, list):
+            return ", ".join(filter(None, map(HttpStream._try_get_error, value)))
+        elif isinstance(value, dict):
+            error_keys = ["message", "messages", "error", "errors", "failures", "failure", "detail"]
+            for key in error_keys:
+                if key in value:
+                    return HttpStream._try_get_error(value[key])
         return None
 
 
