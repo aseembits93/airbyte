@@ -290,6 +290,7 @@ class HttpStream(Stream, CheckpointMixin, ABC):
                 errors_in_value = [_try_get_error(v) for v in value]
                 return ", ".join(v for v in errors_in_value if v is not None)
             elif isinstance(value, dict):
+                # Prioritize common keys for error messages
                 new_value = (
                     value.get("message")
                     or value.get("messages")
@@ -302,10 +303,17 @@ class HttpStream(Stream, CheckpointMixin, ABC):
                 return _try_get_error(new_value)
             return None
 
+        # Optimization: Check Content-Type header before attempting to parse the response body as JSON.
+        # This avoids the cost of reading and parsing the body for non-JSON error responses (e.g., HTML).
+        content_type = response.headers.get("Content-Type", "")
+        if "application/json" not in content_type.lower():
+            return None
+
         try:
             body = response.json()
             return _try_get_error(body)
         except requests.exceptions.JSONDecodeError:
+            # Return None if the content type header indicated JSON but the body was not valid JSON.
             return None
 
     def get_error_display_message(self, exception: BaseException) -> Optional[str]:
