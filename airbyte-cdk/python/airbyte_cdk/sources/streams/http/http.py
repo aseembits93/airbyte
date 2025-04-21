@@ -432,14 +432,23 @@ class HttpStream(Stream, CheckpointMixin, ABC):
         if isinstance(stream_slice, StreamSlice):
             partition = stream_slice.partition
             cursor_slice = stream_slice.cursor_slice
-            remaining = {k: v for k, v in stream_slice.items()}
+            # Optimization: Use dict() for potentially faster copying compared to comprehension
+            # when stream_slice.items() yields many items.
+            remaining = dict(stream_slice.items())
         else:
             # RFR streams that implement stream_slices() to generate stream slices in the legacy mapping format are converted into a
             # structured stream slice mapping by the LegacyCursorBasedCheckpointReader. The structured mapping object has separate
             # fields for the partition and cursor_slice value
             partition = stream_slice.get("partition", {})
             cursor_slice = stream_slice.get("cursor_slice", {})
-            remaining = {key: val for key, val in stream_slice.items() if key != "partition" and key != "cursor_slice"}
+            # Optimization: Create a full copy first using dict(), then remove specific keys.
+            # This is generally faster than iterating with a condition for filtering, especially for larger dictionaries.
+            remaining = dict(stream_slice.items())
+            if "partition" in remaining:
+                del remaining["partition"]
+            if "cursor_slice" in remaining:
+                del remaining["cursor_slice"]
+
         return partition, cursor_slice, remaining
 
     def _fetch_next_page(
