@@ -183,11 +183,17 @@ class PaginatorTestReadDecorator(Paginator):
     _PAGE_COUNT_BEFORE_FIRST_NEXT_CALL = 1
 
     def __init__(self, decorated: Paginator, maximum_number_of_pages: int = 5) -> None:
+        # Original validation: maximum_number_of_pages must be truthy and < 1.
+        # This handles None (False) and positive values correctly.
         if maximum_number_of_pages and maximum_number_of_pages < 1:
             raise ValueError(f"The maximum number of pages on a test read needs to be strictly positive. Got {maximum_number_of_pages}")
         self._maximum_number_of_pages = maximum_number_of_pages
         self._decorated = decorated
         self._page_count = self._PAGE_COUNT_BEFORE_FIRST_NEXT_CALL
+        # Cache the decorated method lookup during initialization.
+        # This avoids repeating the attribute and method lookup on 'self._decorated'
+        # every time 'get_request_body_data' is called.
+        self._get_decorated_body_data = self._decorated.get_request_body_data
 
     def next_page_token(
         self, response: requests.Response, last_page_size: int, last_record: Optional[Record]
@@ -226,7 +232,9 @@ class PaginatorTestReadDecorator(Paginator):
         stream_slice: Optional[StreamSlice] = None,
         next_page_token: Optional[Mapping[str, Any]] = None,
     ) -> Union[Mapping[str, Any], str]:
-        return self._decorated.get_request_body_data(stream_state=stream_state, stream_slice=stream_slice, next_page_token=next_page_token)
+        # Use the cached method reference instead of performing attribute/method lookup on each call.
+        # This micro-optimization reduces overhead for repeated calls to this method.
+        return self._get_decorated_body_data(stream_state=stream_state, stream_slice=stream_slice, next_page_token=next_page_token)
 
     def get_request_body_json(
         self,
