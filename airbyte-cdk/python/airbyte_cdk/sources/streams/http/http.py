@@ -55,7 +55,7 @@ class HttpStream(Stream, CheckpointMixin, ABC):
         # 2. Streams with at least one cursor_field are incremental and thus a superior sync to RFR.
         # 3. Streams overriding read_records() do not guarantee that they will call the parent implementation which can perform
         #    per-page checkpointing so RFR is only supported if a stream use the default `HttpStream.read_records()` method
-        if not self.cursor and len(self.cursor_field) == 0 and type(self).read_records is HttpStream.read_records:
+        if not self.cursor and not self.cursor_field and type(self).read_records is HttpStream.read_records:
             self.cursor = ResumableFullRefreshCursor()
 
     @property
@@ -432,7 +432,7 @@ class HttpStream(Stream, CheckpointMixin, ABC):
         if isinstance(stream_slice, StreamSlice):
             partition = stream_slice.partition
             cursor_slice = stream_slice.cursor_slice
-            remaining = {k: v for k, v in stream_slice.items()}
+            remaining = stream_slice
         else:
             # RFR streams that implement stream_slices() to generate stream slices in the legacy mapping format are converted into a
             # structured stream slice mapping by the LegacyCursorBasedCheckpointReader. The structured mapping object has separate
@@ -440,6 +440,7 @@ class HttpStream(Stream, CheckpointMixin, ABC):
             partition = stream_slice.get("partition", {})
             cursor_slice = stream_slice.get("cursor_slice", {})
             remaining = {key: val for key, val in stream_slice.items() if key != "partition" and key != "cursor_slice"}
+        
         return partition, cursor_slice, remaining
 
     def _fetch_next_page(
