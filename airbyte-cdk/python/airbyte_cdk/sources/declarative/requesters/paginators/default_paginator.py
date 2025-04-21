@@ -181,9 +181,8 @@ class PaginatorTestReadDecorator(Paginator):
     """
 
     _PAGE_COUNT_BEFORE_FIRST_NEXT_CALL = 1
-
     def __init__(self, decorated: Paginator, maximum_number_of_pages: int = 5) -> None:
-        if maximum_number_of_pages and maximum_number_of_pages < 1:
+        if maximum_number_of_pages < 1:
             raise ValueError(f"The maximum number of pages on a test read needs to be strictly positive. Got {maximum_number_of_pages}")
         self._maximum_number_of_pages = maximum_number_of_pages
         self._decorated = decorated
@@ -226,7 +225,12 @@ class PaginatorTestReadDecorator(Paginator):
         stream_slice: Optional[StreamSlice] = None,
         next_page_token: Optional[Mapping[str, Any]] = None,
     ) -> Union[Mapping[str, Any], str]:
-        return self._decorated.get_request_body_data(stream_state=stream_state, stream_slice=stream_slice, next_page_token=next_page_token)
+        # Directly delegate call to the decorated paginator
+        return self._decorated.get_request_body_data(
+            stream_state=stream_state, 
+            stream_slice=stream_slice, 
+            next_page_token=next_page_token
+        )
 
     def get_request_body_json(
         self,
