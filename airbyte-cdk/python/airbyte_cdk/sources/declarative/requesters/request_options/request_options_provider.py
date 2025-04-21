@@ -63,6 +63,7 @@ class RequestOptionsProvider:
 
         At the same time only one of the 'request_body_data' and 'request_body_json' functions can be overridden.
         """
+        pass
 
     @abstractmethod
     def get_request_body_json(
