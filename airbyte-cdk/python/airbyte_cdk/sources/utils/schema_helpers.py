@@ -185,9 +185,24 @@ class InternalConfig(BaseModel):
     page_size: int = Field(None, alias="_page_size")
 
     def dict(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        kwargs["by_alias"] = True
-        kwargs["exclude_unset"] = True
-        return super().dict(*args, **kwargs)  # type: ignore[no-any-return]
+        # Optimize for the common case where dict() is called with no arguments.
+        # In this case, we can directly pass the desired keyword arguments
+        # to the superclass method, avoiding the intermediate creation and
+        # modification of the kwargs dictionary and the unpacking overhead
+        # for empty args/kwargs when calling super.
+        # Checking 'args' first is slightly faster as it's a tuple and 'kwargs' is a dict.
+        if not args and not kwargs:
+             # Directly call super().dict with the desired flags
+             return super().dict(by_alias=True, exclude_unset=True)
+        else:
+            # If arguments are provided, modify kwargs in place and pass them along
+            # with args. This preserves the original behavior of accepting and
+            # passing through arbitrary arguments accepted by the superclass method.
+            # Forcing the flags ensures they are always set, overwriting any
+            # values provided by the caller for by_alias or exclude_unset.
+            kwargs["by_alias"] = True
+            kwargs["exclude_unset"] = True
+            return super().dict(*args, **kwargs) # type: ignore[no-any-return]
 
     def is_limit_reached(self, records_counter: int) -> bool:
         """
