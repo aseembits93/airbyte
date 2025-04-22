@@ -20,12 +20,19 @@ def get_numeric_value_from_header(response: requests.Response, header: str, rege
     header_value = response.headers.get(header, None)
     if not header_value:
         return None
+    
     if isinstance(header_value, str):
         if regex:
             match = regex.match(header_value)
             if match:
                 header_value = match.group()
-        return _as_float(header_value)
+        
+        # Directly perform the float conversion and validation in-place
+        try:
+            return float(header_value)
+        except ValueError:
+            return None
+
     elif isinstance(header_value, numbers.Number):
         return float(header_value)  # type: ignore[arg-type]
     else:
