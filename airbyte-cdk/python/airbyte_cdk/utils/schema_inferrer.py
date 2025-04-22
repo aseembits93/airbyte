@@ -84,8 +84,10 @@ class SchemaInferrer:
 
     stream_to_builder: Dict[str, SchemaBuilder]
 
+    # Preserving __init__ signature and implementation
     def __init__(self, pk: Optional[List[List[str]]] = None, cursor_field: Optional[List[List[str]]] = None) -> None:
-        self.stream_to_builder = defaultdict(NoRequiredSchemaBuilder)
+        # Initialization relies on NoRequiredSchemaBuilder, which is assumed to be available.
+        self.stream_to_builder = defaultdict(NoRequiredSchemaBuilder) # Assuming NoRequiredSchemaBuilder is defined
         self._pk = [] if pk is None else pk
         self._cursor_field = [] if cursor_field is None else cursor_field
 
@@ -100,10 +102,16 @@ class SchemaInferrer:
             return False
 
     def _remove_type_from_any_of(self, node: InferredSchema) -> None:
+        # This function is called outside the `isinstance(node, dict)` block in _clean,
+        # preserving the original (slightly inefficient) call structure.
+        # It relies on the check `if _ANY_OF in node:` to handle non-dictionary inputs gracefully
+        # by doing nothing, or potentially raising AttributeError if called on non-dict without that check.
+        # The original code includes this check.
         if _ANY_OF in node:
             node.pop(_TYPE, None)
 
     def _clean_any_of(self, node: InferredSchema) -> None:
+        # Original logic preserved.
         if len(node[_ANY_OF]) == 2 and self._null_type_in_any_of(node):
             real_type = node[_ANY_OF][1] if node[_ANY_OF][0][_TYPE] == _NULL_TYPE else node[_ANY_OF][0]
             node.update(real_type)
@@ -114,20 +122,53 @@ class SchemaInferrer:
             node[_TYPE] = [_NULL_TYPE]
 
     def _clean_properties(self, node: InferredSchema) -> None:
-        for key, value in list(node[_PROPERTIES].items()):
+        # Optimization: Collect keys to remove first to avoid modifying the dictionary while iterating over its items.
+        # Recursively cleans up properties: remove properties of type "null"
+        properties_dict = node[_PROPERTIES] # Get a reference to the properties dictionary
+        keys_to_remove = [] # List to store keys that need to be removed
+
+        # Iterate over items. Modifying the dictionary is safe because we are only appending to keys_to_remove.
+        # This avoids the overhead of creating a list copy using `list(properties_dict.items())`.
+        for key, value in properties_dict.items():
+            # Check if the property value is a dictionary with type 'null'.
             if isinstance(value, dict) and value.get(_TYPE, None) == _NULL_TYPE:
-                node[_PROPERTIES].pop(key)
+                keys_to_remove.append(key)
             else:
+                # Recursively clean the property value. This happens during the first loop.
                 self._clean(value)
 
+        # After iterating through all items and performing recursive calls, remove the collected keys.
+        # This separates the iteration phase from the modification phase, which is generally faster
+        # for dictionary modifications during traversal compared to removing items from a list copy.
+        for key in keys_to_remove:
+            properties_dict.pop(key) # Remove the key from the dictionary
+
     def _ensure_null_type_on_top(self, node: InferredSchema) -> None:
-        if isinstance(node[_TYPE], list):
-            if _NULL_TYPE in node[_TYPE]:
-                # we want to make sure null is always at the end as it makes schemas more readable
-                node[_TYPE].remove(_NULL_TYPE)
-            node[_TYPE].append(_NULL_TYPE)
+        # Optimization: Add a check to see if the list already ends with null to avoid unnecessary operations.
+        # Ensures the null type is always the last element if 'type' is a list, making schemas more readable.
+        # Assumes node[_TYPE] exists or raises KeyError, preserving original behavior.
+        current_type = node[_TYPE] # Get a reference to the type value
+        if isinstance(current_type, list):
+            # Check if the list is non-empty and the last element is already _NULL_TYPE
+            # This check is fast (O(1)) and avoids the O(N) search/modification if the list is already correct.
+            if current_type and current_type[-1] == _NULL_TYPE:
+                # The list is already in the desired state [..., null]. No operations needed.
+                pass
+            else:
+                # The list is not empty or does not end with null.
+                # Ensure null is at the end by removing any existing null and appending one.
+                # This preserves the order of other types while guaranteeing null is last.
+                # This part uses the original logic of removing the first found null then appending.
+                if _NULL_TYPE in current_type:
+                    # Remove the first occurrence of _NULL_TYPE if present. This is an O(N) operation.
+                    current_type.remove(_NULL_TYPE)
+                # Append _NULL_TYPE at the end. This is an O(1) amortized operation.
+                current_type.append(_NULL_TYPE)
+                # The original list object `node[_TYPE]` is modified in place.
         else:
-            node[_TYPE] = [node[_TYPE], _NULL_TYPE]
+            # The type is not a list (e.g., a single string type or an object type definition).
+            # Convert it into a list containing the original type and null, with null at the end.
+            node[_TYPE] = [current_type, _NULL_TYPE]
 
     def _clean(self, node: InferredSchema) -> InferredSchema:
         """
@@ -135,24 +176,40 @@ class SchemaInferrer:
         - remove anyOf if one of them is just a null value
         - remove properties of type "null"
         """
-
+        # The recursive cleaning happens for dictionary nodes.
         if isinstance(node, dict):
+            # Clean the anyOf property of the current node.
+            # This needs to happen early as it can affect the 'type' property.
             if _ANY_OF in node:
-                self._clean_any_of(node)
+                self._clean_any_of(node) # Calls preserved _clean_any_of
 
+            # Recursively clean the values of properties.
+            # This must happen before processing the current node's properties further.
+            # Call our optimized _clean_properties.
             if _PROPERTIES in node and isinstance(node[_PROPERTIES], dict):
-                self._clean_properties(node)
+                self._clean_properties(node) # Calls self._clean recursively on property values
 
+            # Recursively clean the schema defined in 'items' (for array types).
+            # Call self._clean recursively on the items schema.
             if _ITEMS in node:
                 self._clean(node[_ITEMS])
 
-            # this check needs to follow the "anyOf" cleaning as it might populate `type`
+            # Ensure the 'null' type is always the last element if 'type' is a list.
+            # This step needs to follow 'anyOf' cleaning as 'anyOf' processing might have populated or modified 'type'.
+            # Assumes node[_TYPE] exists or raises KeyError, preserving original behavior.
+            # Call our optimized _ensure_null_type_on_top.
             self._ensure_null_type_on_top(node)
 
-        # remove added `type: ["null"]` for `anyOf` nested node
-        self._remove_type_from_any_of(node)
+        # Remove the 'type' key from the current node if 'anyOf' is present.
+        # This step happens *after* all internal processing (including recursive calls within the dict block)
+        # for the current node's dictionary structure is complete.
+        # THE ORIGINAL CODE CALLS THIS FUNCTION *OUTSIDE* THE `isinstance(node, dict)` BLOCK.
+        # We strictly preserve this placement to match the original execution flow,
+        # even though it means calling the function unconditionally (it relies on its internal checks).
+        # The function _remove_type_from_any_of internally checks if `_ANY_OF in node`.
+        self._remove_type_from_any_of(node) # Call our preserved _remove_type_from_any_of
 
-        return node
+        return node # Return the potentially modified node
 
     def _add_required_properties(self, node: InferredSchema) -> InferredSchema:
         """
