@@ -40,6 +40,12 @@ def to_configured_catalog(configured_streams: List[ConfiguredAirbyteStream]) -> 
 
 
 def create_configured_catalog(stream: AirbyteStream, sync_mode: SyncMode = SyncMode.full_refresh) -> ConfiguredAirbyteCatalog:
-    configured_streams = [to_configured_stream(stream, sync_mode=sync_mode, primary_key=stream.source_defined_primary_key)]
-
-    return to_configured_catalog(configured_streams)
+    # Directly create a list with one element and pass to the function
+    return ConfiguredAirbyteCatalog(streams=[
+        ConfiguredAirbyteStream(
+            stream=stream, 
+            sync_mode=sync_mode, 
+            destination_sync_mode=DestinationSyncMode.append, 
+            primary_key=stream.source_defined_primary_key
+        )
+    ])
