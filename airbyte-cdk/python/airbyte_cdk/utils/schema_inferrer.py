@@ -86,8 +86,8 @@ class SchemaInferrer:
 
     def __init__(self, pk: Optional[List[List[str]]] = None, cursor_field: Optional[List[List[str]]] = None) -> None:
         self.stream_to_builder = defaultdict(NoRequiredSchemaBuilder)
-        self._pk = [] if pk is None else pk
-        self._cursor_field = [] if cursor_field is None else cursor_field
+        self._pk = pk or []
+        self._cursor_field = cursor_field or []
 
     def accumulate(self, record: AirbyteRecordMessage) -> None:
         """Uses the input record to add to the inferred schemas maintained by this object"""
@@ -228,7 +228,7 @@ class SchemaInferrer:
         self._add_field_as_required(node[_PROPERTIES][next_node], path[1:], traveled_path)
 
     def _is_leaf(self, path: List[str]) -> bool:
-        return len(path) == 0
+        return not path  # Faster than len(path) == 0
 
     def _remove_null_from_type(self, node: InferredSchema) -> None:
         if isinstance(node[_TYPE], list):
