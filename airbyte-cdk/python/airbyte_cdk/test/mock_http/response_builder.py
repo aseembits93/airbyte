@@ -44,6 +44,7 @@ class Path(ABC):
 class FieldPath(Path):
     def __init__(self, field: str):
         self._path = [field]
+        self._str_repr = f"FieldPath(field={field})"  # Precompute the string representation
 
     def write(self, template: Dict[str, Any], value: Any) -> None:
         _write(template, self._path, value)
@@ -55,7 +56,7 @@ class FieldPath(Path):
         return _extract(self._path, template)
 
     def __str__(self) -> str:
-        return f"FieldPath(field={self._path[0]})"
+        return self._str_repr  # Return the precomputed string
 
 
 class NestedPath(Path):
