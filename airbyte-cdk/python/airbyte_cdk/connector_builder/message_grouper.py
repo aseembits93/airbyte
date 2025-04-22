@@ -253,8 +253,8 @@ class MessageGrouper:
     def _is_page_http_request(json_message: Optional[Dict[str, Any]]) -> bool:
         if not json_message:
             return False
-        else:
-            return MessageGrouper._is_http_log(json_message) and not MessageGrouper._is_auxiliary_http_request(json_message)
+        http_data = json_message.get("http", None)
+        return bool(http_data) and not http_data.get("is_auxiliary", False)
 
     @staticmethod
     def _is_http_log(message: Dict[str, JsonType]) -> bool:
@@ -270,9 +270,8 @@ class MessageGrouper:
         """
         if not message:
             return False
-
-        is_http = MessageGrouper._is_http_log(message)
-        return is_http and message.get("http", {}).get("is_auxiliary", False)
+        http_data = message.get("http", None)
+        return bool(http_data) and http_data.get("is_auxiliary", False)
 
     @staticmethod
     def _close_page(
