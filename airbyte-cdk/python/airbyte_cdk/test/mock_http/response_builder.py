@@ -59,8 +59,10 @@ class FieldPath(Path):
 
 
 class NestedPath(Path):
+
     def __init__(self, path: List[str]):
         self._path = path
+        self._str_repr = f"NestedPath(path={self._path})"  # Cache the string representation
 
     def write(self, template: Dict[str, Any], value: Any) -> None:
         _write(template, self._path, value)
@@ -72,7 +74,7 @@ class NestedPath(Path):
         return _extract(self._path, template)
 
     def __str__(self) -> str:
-        return f"NestedPath(path={self._path})"
+        return self._str_repr
 
 
 class PaginationStrategy(ABC):
