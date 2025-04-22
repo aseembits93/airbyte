@@ -45,19 +45,23 @@ def resolve_ref_links(obj: Any) -> Any:
     :param obj - jsonschema object with ref field resolved.
     :return JSON serializable object with references without external dependencies.
     """
-    if isinstance(obj, jsonref.JsonRef):
-        obj = resolve_ref_links(obj.__subject__)
-        # Omit existing definitions for external resource since
-        # we dont need it anymore.
-        if isinstance(obj, dict):
-            obj.pop("definitions", None)
-            return obj
-        else:
-            raise ValueError(f"Expected obj to be a dict. Got {obj}")
-    elif isinstance(obj, dict):
-        return {k: resolve_ref_links(v) for k, v in obj.items()}
+    def _resolve_internal(inner_obj: Any) -> Any:
+        if isinstance(inner_obj, jsonref.JsonRef):
+            inner_obj = inner_obj.__subject__
+            if isinstance(inner_obj, dict):
+                inner_obj.pop("definitions", None)
+            else:
+                raise ValueError(f"Expected inner_obj to be a dict. Got {inner_obj}")
+        return inner_obj
+
+    while isinstance(obj, jsonref.JsonRef):
+        obj = _resolve_internal(obj)
+
+    if isinstance(obj, dict):
+        # Using direct variable assignment to avoid additional function calls where possible
+        return {k: _resolve_internal(v) if isinstance(v, (dict, jsonref.JsonRef)) else resolve_ref_links(v) for k, v in obj.items()}
     elif isinstance(obj, list):
-        return [resolve_ref_links(item) for item in obj]
+        return [_resolve_internal(item) if isinstance(item, (dict, jsonref.JsonRef)) else resolve_ref_links(item) for item in obj]
     else:
         return obj
 
