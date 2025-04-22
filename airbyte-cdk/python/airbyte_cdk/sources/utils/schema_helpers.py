@@ -45,21 +45,95 @@ def resolve_ref_links(obj: Any) -> Any:
     :param obj - jsonschema object with ref field resolved.
     :return JSON serializable object with references without external dependencies.
     """
-    if isinstance(obj, jsonref.JsonRef):
-        obj = resolve_ref_links(obj.__subject__)
-        # Omit existing definitions for external resource since
-        # we dont need it anymore.
-        if isinstance(obj, dict):
-            obj.pop("definitions", None)
-            return obj
+    # Use a dictionary within the scope of this call to cache processed objects by their ID.
+    # This ensures the cache is clean for each top-level invocation of resolve_ref_links
+    # and handles potential cycles in the object graph by returning incomplete objects
+    # during processing, which will be filled later.
+    processed_cache = {}
+
+    def _resolve_recursive(current_obj: Any) -> Any:
+        # Only attempt to cache mutable containers (dicts, lists) and JsonRef instances,
+        # as they are potentially large, can be duplicated by reference, and are suitable for ID-based caching.
+        # Primitives and other immutable types are cheap to process and not cached by ID.
+        is_cacheable = isinstance(current_obj, (dict, list, jsonref.JsonRef))
+
+        if is_cacheable:
+             obj_id = id(current_obj)
+             if obj_id in processed_cache:
+                 # Return the already processed object if found in cache.
+                 # For cyclic references, this might return an object that is still
+                 # being populated, which is the desired behavior for cycles.
+                 return processed_cache[obj_id]
+
+        # --- Core Transformation Logic ---
+
+        if isinstance(current_obj, jsonref.JsonRef):
+            # Recursively resolve the subject of the JsonRef.
+            # The recursive call handles the cache check for the subject object itself.
+            resolved_subject = _resolve_recursive(current_obj.__subject__)
+
+            # Apply JsonRef-specific cleanup (remove definitions) if the subject resolved to a dict.
+            if isinstance(resolved_subject, dict):
+                # Create a copy to ensure we don't modify a potentially cached or shared object instance
+                # that the subject might be pointing to. Each JsonRef should yield a unique cleaned dictionary.
+                result_obj = resolved_subject.copy()
+                # Omit existing definitions for external resource since
+                # we dont need it anymore.
+                result_obj.pop("definitions", None)
+            else:
+                # The original code expects the JsonRef subject to resolve to a dict.
+                # Preserve the original ValueError message template, using the actual resolved value.
+                raise ValueError(f"Expected obj to be a dict. Got {resolved_subject}")
+
+            # Cache the final result for this specific JsonRef object after the transformation.
+            # This ensures that if the same JsonRef instance is encountered again (less common
+            # after jsonref resolution, but possible), its processed result is reused.
+            if is_cacheable: # This is true for JsonRef
+                 processed_cache[obj_id] = result_obj
+
+            return result_obj
+
+        elif isinstance(current_obj, dict):
+            # Create a new dictionary to build the processed result into.
+            processed_dict = {}
+            # Cache the new dictionary *before* processing its children.
+            # This is crucial for handling recursive/cyclic references within the structure:
+            # if a child object contains a reference back to this dictionary, the recursive call
+            # for that child will find this incomplete dictionary in the cache and use it,
+            # preventing infinite recursion and correctly building the cyclic structure.
+            if is_cacheable: # This is true for dict
+                 processed_cache[obj_id] = processed_dict
+
+            # Process dictionary values recursively.
+            for k, v in current_obj.items():
+                processed_dict[k] = _resolve_recursive(v)
+
+            # The processed_dict is now fully populated. It was already placed in the cache.
+            return processed_dict
+
+        elif isinstance(current_obj, list):
+            # Create a new list to build the processed result into.
+            processed_list = []
+            # Cache the new list *before* processing its children.
+            # This is crucial for handling recursive/cyclic references.
+            if is_cacheable: # This is true for list
+                 processed_cache[obj_id] = processed_list
+
+            # Process list items recursively.
+            for item in current_obj:
+                processed_list.append(_resolve_recursive(item))
+
+            # The processed_list is now fully populated. It was already placed in the cache.
+            return processed_list
+
         else:
-            raise ValueError(f"Expected obj to be a dict. Got {obj}")
-    elif isinstance(obj, dict):
-        return {k: resolve_ref_links(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [resolve_ref_links(item) for item in obj]
-    else:
-        return obj
+            # For primitives and other non-container types, return the object directly.
+            # They are not cached by ID as they are immutable or cheaply copied implicitly.
+            return current_obj
+
+    # Start the recursive traversal and transformation process with the initial object.
+    # The cache is managed internally by the helper function _resolve_recursive.
+    return _resolve_recursive(obj)
 
 
 def _expand_refs(schema: Any, ref_resolver: Optional[RefResolver] = None) -> None:
