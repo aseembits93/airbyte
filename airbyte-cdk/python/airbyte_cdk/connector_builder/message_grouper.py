@@ -348,7 +348,9 @@ class MessageGrouper:
         return False
 
     def _parse_slice_description(self, log_message: str) -> Dict[str, Any]:
-        return json.loads(log_message.replace(SliceLogger.SLICE_LOG_PREFIX, "", 1))  # type: ignore
+        if log_message.startswith(SliceLogger.SLICE_LOG_PREFIX):
+            log_message = log_message[len(SliceLogger.SLICE_LOG_PREFIX):]
+        return json.loads(log_message)  # type: ignore
 
     @staticmethod
     def _clean_config(config: Dict[str, Any]) -> Dict[str, Any]:
