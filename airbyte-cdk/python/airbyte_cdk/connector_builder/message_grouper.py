@@ -348,7 +348,20 @@ class MessageGrouper:
         return False
 
     def _parse_slice_description(self, log_message: str) -> Dict[str, Any]:
-        return json.loads(log_message.replace(SliceLogger.SLICE_LOG_PREFIX, "", 1))  # type: ignore
+        # The original code used log_message.replace(SliceLogger.SLICE_LOG_PREFIX, "", 1)
+        # which creates a new string by replacing the prefix. If the prefix is at the start,
+        # checking with startswith and slicing is generally more efficient as it avoids
+        # the overhead of the replace operation, potentially creating a view or a cheaper copy.
+        prefix = SliceLogger.SLICE_LOG_PREFIX
+        if log_message.startswith(prefix):
+            # Slice the string from the position after the prefix
+            string_to_parse = log_message[len(prefix):]
+        else:
+            # If for some reason the prefix isn't there, behave like replace and parse the original string.
+            # This case is unlikely for logs intended for this parser, but handles the edge case gracefully.
+            string_to_parse = log_message
+
+        return json.loads(string_to_parse)  # type: ignore
 
     @staticmethod
     def _clean_config(config: Dict[str, Any]) -> Dict[str, Any]:
