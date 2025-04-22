@@ -3,6 +3,7 @@
 import functools
 import json
 from abc import ABC, abstractmethod
+from pathlib import Path
 from pathlib import Path as FilePath
 from typing import Any, Dict, List, Optional, Union
 
@@ -43,6 +44,7 @@ class Path(ABC):
 
 class FieldPath(Path):
     def __init__(self, field: str):
+        # self._path is always a list containing a single string element, the field name.
         self._path = [field]
 
     def write(self, template: Dict[str, Any], value: Any) -> None:
@@ -52,7 +54,16 @@ class FieldPath(Path):
         _replace_value(template, self._path, value)
 
     def extract(self, template: Dict[str, Any]) -> Any:
-        return _extract(self._path, template)
+        # The original implementation called _extract(self._path, template).
+        # Since self._path is always a list with a single element [field],
+        # _extract([field], template) evaluates to template[field], which is template[self._path[0]].
+        # Directly accessing the dictionary using the first (and only) element of self._path
+        # avoids the overhead of the _extract function call and the functools.reduce operation
+        # when the path is known to be of length 1. This is a direct dictionary lookup,
+        # which is significantly faster than the generic path traversal logic.
+        # This optimization is valid because the FieldPath class is designed specifically for
+        # accessing a single field, and self._path is always initialized as a list of one element.
+        return template[self._path[0]]
 
     def __str__(self) -> str:
         return f"FieldPath(field={self._path[0]})"
