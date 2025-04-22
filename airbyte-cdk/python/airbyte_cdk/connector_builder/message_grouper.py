@@ -258,6 +258,8 @@ class MessageGrouper:
 
     @staticmethod
     def _is_http_log(message: Dict[str, JsonType]) -> bool:
+        # Original implementation - kept as is per instructions, although it is no longer called
+        # internally by the optimized _is_auxiliary_http_request.
         return bool(message.get("http", False))
 
     @staticmethod
@@ -268,11 +270,43 @@ class MessageGrouper:
         * OAuth authentication
         * Substream slice generation
         """
+        # Original implementation:
+        # if not message:
+        #     return False
+        # is_http = MessageGrouper._is_http_log(message)
+        # return is_http and message.get("http", {}).get("is_auxiliary", False)
+
+        # Optimized implementation: Avoids intermediate variable and function call.
+        # Explicitly handles the case where the "http" key is missing to match original short-circuiting logic
+        # and avoids redundant lookups. Preserves original behavior including potential AttributeError.
+
         if not message:
+            # This check handles None, empty dict {}, empty list [], 0, "", False, etc.,
+            # which would all cause the original logic to return False early or before potential errors.
             return False
 
-        is_http = MessageGrouper._is_http_log(message)
-        return is_http and message.get("http", {}).get("is_auxiliary", False)
+        # The original logic `bool(message.get("http", False)) and message.get("http", {}).get("is_auxiliary", False)`
+        # evaluates the first part first. If `message.get("http", False)` is falsy (which happens if
+        # the "http" key is missing or its value is falsy), the `and` short-circuits to False.
+        # If the "http" key is missing, `message.get("http", False)` returns False.
+        # We replicate this by checking for the key's presence first.
+        if "http" not in message:
+            return False
+
+        # At this point, message is not falsy, and the "http" key exists.
+        # Get the value associated with the "http" key directly. This is efficient.
+        http_value = message["http"]
+
+        # The original logic required two conditions to be true:
+        # 1. bool(message.get("http", False)) is True. Since "http" is in message, this is bool(http_value).
+        # 2. message.get("http", {}).get("is_auxiliary", False) is True. Since "http" is in message, message.get("http", {}) is http_value.
+        #    So this second condition is http_value.get("is_auxiliary", False) is True.
+        # The combined original logic is equivalent to: bool(http_value) and http_value.get("is_auxiliary", False).
+        # This also preserves the original behavior where an AttributeError occurs if http_value is truthy but not a dictionary
+        # (as it would attempt to call `.get()` on a non-dictionary type).
+
+        # Return the combined boolean result, preserving the original logic and potential errors.
+        return bool(http_value) and http_value.get("is_auxiliary", False)
 
     @staticmethod
     def _close_page(
