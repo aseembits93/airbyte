@@ -69,7 +69,30 @@ class NestedPath(Path):
         _replace_value(template, self._path, value)
 
     def extract(self, template: Dict[str, Any]) -> Any:
-        return _extract(self._path, template)
+        """
+        Extracts a value from a nested dictionary/list structure using the stored path.
+
+        This implementation replaces functools.reduce with a simple for loop,
+        which is generally faster in Python for sequential access patterns
+        like this due to reduced function call overhead.
+
+        :param template: The nested dictionary or list structure to extract from.
+        :return: The value found at the end of the path.
+        :raises KeyError: If a key in the path is not found in a dictionary.
+        :raises IndexError: If an index in the path is out of bounds for a list.
+        :raises TypeError: If a path element is used on an incorrect type (e.g.,
+                           a string key on a list, or an integer index on a dictionary).
+        """
+        current_value = template
+        # Iterate through the path elements (keys or indices)
+        for key_or_index in self._path:
+            # Access the next level of the nested structure.
+            # This direct access within a loop is typically faster than
+            # repeated function calls within reduce.
+            # KeyError, IndexError, or TypeError will be raised automatically
+            # by Python if the access fails, preserving the original behavior.
+            current_value = current_value[key_or_index]
+        return current_value
 
     def __str__(self) -> str:
         return f"NestedPath(path={self._path})"
