@@ -251,10 +251,33 @@ class MessageGrouper:
 
     @staticmethod
     def _is_page_http_request(json_message: Optional[Dict[str, Any]]) -> bool:
+        """
+        Checks if the message represents a primary HTTP request for a page of records,
+        excluding auxiliary requests like authentication or substream slice generation.
+        This optimized version avoids redundant checks present in the original implementation.
+        """
         if not json_message:
             return False
-        else:
-            return MessageGrouper._is_http_log(json_message) and not MessageGrouper._is_auxiliary_http_request(json_message)
+
+        # In the original implementation, _is_http_log was called, and then _is_auxiliary_http_request
+        # was called, which itself internally called _is_http_log again.
+        # This rewrite avoids the redundant second call to _is_http_log and function call overhead
+        # by inlining the necessary checks.
+
+        # Check if the message has an 'http' field and its value is truthy, equivalent to _is_http_log(json_message).
+        http_payload = json_message.get("http")
+        if not http_payload:
+            return False # Not an http log, so definitely not a page http request
+
+        # Now check if it's an auxiliary request. The original _is_auxiliary_http_request logic,
+        # after confirming it's an http log, checks message.get("http", {}).get("is_auxiliary", False).
+        # Since we already retrieved http_payload = json_message.get("http"), we can perform
+        # the check directly on http_payload. This relies on http_payload being a dict,
+        # consistent with the potential AttributeError in the original if it's not.
+        is_auxiliary = http_payload.get("is_auxiliary", False) # Potential AttributeError if http_payload is not a dict
+
+        # A page http request is an http log (which we've confirmed) AND not auxiliary.
+        return not is_auxiliary
 
     @staticmethod
     def _is_http_log(message: Dict[str, JsonType]) -> bool:
