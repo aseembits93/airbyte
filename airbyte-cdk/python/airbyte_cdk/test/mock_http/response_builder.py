@@ -69,7 +69,10 @@ class NestedPath(Path):
         _replace_value(template, self._path, value)
 
     def extract(self, template: Dict[str, Any]) -> Any:
-        return _extract(self._path, template)
+        # Iteratively extract the nested value based on the path
+        for key in self._path:
+            template = template[key]
+        return template
 
     def __str__(self) -> str:
         return f"NestedPath(path={self._path})"
