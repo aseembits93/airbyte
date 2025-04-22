@@ -317,13 +317,21 @@ class MessageGrouper:
 
     @staticmethod
     def _create_request_from_log_message(json_http_message: Dict[str, Any]) -> HttpRequest:
-        url = json_http_message.get("url", {}).get("full", "")
-        request = json_http_message.get("http", {}).get("request", {})
+        url_dict = json_http_message.get("url", {})
+        http_dict = json_http_message.get("http", {})
+        request_dict = http_dict.get("request", {})
+        body_dict = request_dict.get("body", {})
+
+        url = url_dict.get("full", "")
+        http_method = request_dict.get("method", "")
+        headers = request_dict.get("headers", None)
+        body = body_dict.get("content", "")
+
         return HttpRequest(
             url=url,
-            http_method=request.get("method", ""),
-            headers=request.get("headers"),
-            body=request.get("body", {}).get("content", ""),
+            http_method=http_method,
+            headers=headers,
+            body=body,
         )
 
     @staticmethod
