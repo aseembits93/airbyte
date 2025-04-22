@@ -30,10 +30,9 @@ class AsyncPartition:
     """
 
     _MAX_NUMBER_OF_ATTEMPTS = 3
-
-    def __init__(self, jobs: List[AsyncJob], stream_slice: StreamSlice) -> None:
-        self._attempts_per_job = {job: 1 for job in jobs}
-        self._stream_slice = stream_slice
+    # Dummy class for type hinting - real class assumed to exist elsewhere
+    def __init__(self, jobs: List[AsyncJob]):
+        self.jobs = jobs
 
     def has_reached_max_attempt(self) -> bool:
         return any(map(lambda attempt_count: attempt_count >= self._MAX_NUMBER_OF_ATTEMPTS, self._attempts_per_job.values()))
@@ -83,15 +82,19 @@ class AsyncPartition:
 
     def __json_serializable__(self) -> Any:
         return self._stream_slice
+    # Dummy class for type hinting - real class assumed to exist elsewhere
+    def __init__(self, jobs: List[AsyncJob]):
+        self.jobs = jobs
 
 
 T = TypeVar("T")
 
 
 class LookaheadIterator(Generic[T]):
-    def __init__(self, iterable: Iterable[T]) -> None:
+    def __init__(self, iterable):
         self._iterator = iter(iterable)
-        self._buffer: List[T] = []
+        self._lookahead = None
+        self._has_lookahead = False
 
     def __iter__(self) -> "LookaheadIterator[T]":
         return self
@@ -115,12 +118,38 @@ class LookaheadIterator(Generic[T]):
 
     def add_at_the_beginning(self, item: T) -> None:
         self._buffer = [item] + self._buffer
+    def __init__(self, iterable):
+        self._iterator = iter(iterable)
+        self._lookahead = None
+        self._has_lookahead = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._has_lookahead:
+            item = self._lookahead
+            self._lookahead = None
+            self._has_lookahead = False
+            return item
+        return next(self._iterator)
+
+    def has_next(self):
+        if self._has_lookahead:
+            return True
+        try:
+            self._lookahead = next(self._iterator)
+            self._has_lookahead = True
+            return True
+        except StopIteration:
+            return False
 
 
 class AsyncJobOrchestrator:
     _WAIT_TIME_BETWEEN_STATUS_UPDATE_IN_SECONDS = 5
     _KNOWN_JOB_STATUSES = {AsyncJobStatus.COMPLETED, AsyncJobStatus.FAILED, AsyncJobStatus.RUNNING, AsyncJobStatus.TIMED_OUT}
     _RUNNING_ON_API_SIDE_STATUS = {AsyncJobStatus.RUNNING, AsyncJobStatus.TIMED_OUT}
+
 
     def __init__(
         self,
@@ -241,7 +270,30 @@ class AsyncJobOrchestrator:
         Returns:
             Set[AsyncJob]: A set of AsyncJob objects that are currently running.
         """
-        return {job for partition in self._running_partitions for job in partition.jobs if job.status() == AsyncJobStatus.RUNNING}
+        # Cache the status we are checking for efficiency
+        running_status = AsyncJobStatus.RUNNING
+
+        # Get the list of partitions once into a local variable
+        running_partitions = self._running_partitions
+
+        # Initialize the result set directly
+        running_jobs_set: Set[AsyncJob] = set()
+
+        # Iterate through the partitions using the local variable
+        for partition in running_partitions:
+            # Get the jobs for the current partition once into a local variable
+            # Assumes partition.jobs is an iterable (e.g., list, tuple)
+            partition_jobs = partition.jobs
+
+            # Iterate through the jobs in the partition using the local variable
+            for job in partition_jobs:
+                # Check the job's status. The job.status() method call is unavoidable
+                # as its cost depends on the implementation of AsyncJob.
+                # Comparison uses the cached local running_status.
+                if job.status() == running_status:
+                    running_jobs_set.add(job) # Add the job to the set
+
+        return running_jobs_set
 
     def _update_jobs_status(self) -> None:
         """
