@@ -317,13 +317,40 @@ class MessageGrouper:
 
     @staticmethod
     def _create_request_from_log_message(json_http_message: Dict[str, Any]) -> HttpRequest:
-        url = json_http_message.get("url", {}).get("full", "")
-        request = json_http_message.get("http", {}).get("request", {})
+        # The original implementation used chained .get() calls with default dictionaries ({})
+        # to safely access nested keys. While robust, this approach creates temporary empty
+        # dictionary objects when intermediate keys are missing in the input data.
+        # This revised version uses explicit None checks after each .get() call.
+        # This avoids the creation of temporary dictionary objects and can potentially
+        # improve performance, especially when processing many messages where nested
+        # keys might frequently be missing. By avoiding object creation and subsequent
+        # garbage collection, and by short-circuiting lookups when a key is None,
+        # this method can be faster, particularly on sparse data.
+
+        url = ""
+        url_info = json_http_message.get("url")
+        if url_info is not None:
+            url = url_info.get("full", "")
+
+        http_method = ""
+        headers = None
+        body_content = ""
+
+        http_info = json_http_message.get("http")
+        if http_info is not None:
+            request_info = http_info.get("request")
+            if request_info is not None:
+                http_method = request_info.get("method", "")
+                headers = request_info.get("headers") # headers default is None
+                body_info = request_info.get("body")
+                if body_info is not None:
+                    body_content = body_info.get("content", "")
+
         return HttpRequest(
             url=url,
-            http_method=request.get("method", ""),
-            headers=request.get("headers"),
-            body=request.get("body", {}).get("content", ""),
+            http_method=http_method,
+            headers=headers,
+            body=body_content,
         )
 
     @staticmethod
