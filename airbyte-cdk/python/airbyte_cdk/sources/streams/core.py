@@ -103,6 +103,18 @@ class IncrementalMixin(CheckpointMixin, ABC):
 class StreamClassification:
     is_legacy_format: bool
     has_multiple_slices: bool
+    def __init__(self, is_legacy_format: bool, has_multiple_slices: bool):
+        self.is_legacy_format = is_legacy_format
+        self.has_multiple_slices = has_multiple_slices
+
+    # Added for completeness and potential testing, not strictly necessary for performance.
+    def __eq__(self, other):
+        if not isinstance(other, StreamClassification):
+            return NotImplemented
+        return self.is_legacy_format == other.is_legacy_format and self.has_multiple_slices == other.has_multiple_slices
+
+    def __repr__(self):
+        return f"StreamClassification(is_legacy_format={self.is_legacy_format}, has_multiple_slices={self.has_multiple_slices})"
 
 
 # Moved to class declaration since get_updated_state is called on every record for incremental syncs, and thus the @deprecated decorator as well.
@@ -502,39 +514,61 @@ class Stream(ABC):
         Both attributes can eventually be deprecated once stream's define this method deleted once substreams have been implemented and
         legacy connectors all adhere to the StreamSlice object.
         """
+        # Original code started with this ValueError check. Keeping it to preserve original behavior,
+        # although its interaction with different types of iterators (empty vs None/list) can be subtle.
         if not mappings_or_slices:
             raise ValueError("A stream should always have at least one slice")
+
         try:
-            next_slice = next(mappings_or_slices)
-            if isinstance(next_slice, StreamSlice) and next_slice == StreamSlice(partition={}, cursor_slice={}):
-                is_legacy_format = False
-                slice_has_value = False
-            elif next_slice == {}:
-                is_legacy_format = True
-                slice_has_value = False
-            elif isinstance(next_slice, StreamSlice):
-                is_legacy_format = False
-                slice_has_value = True
-            else:
-                is_legacy_format = True
-                slice_has_value = True
+            # Attempt to get the first slice from the iterator.
+            first_slice = next(mappings_or_slices)
         except StopIteration:
-            # If the stream has no slices, the format ultimately does not matter since no data will get synced. This is technically
-            # a valid case because it is up to the stream to define its slicing behavior
+            # If the iterator is exhausted immediately (yields no items), it means there are no slices.
+            # The original code's first StopIteration handler returns (False, False) in this case.
+            # This matches the behavior for an empty iterator object, even if it seems to contradict
+            # the ValueError above for other empty input types. Preserving this specific outcome.
             return StreamClassification(is_legacy_format=False, has_multiple_slices=False)
 
-        if slice_has_value:
-            # If the first slice contained a partition value from the result of stream_slices(), this is a substream that might
-            # have multiple parent records to iterate over
-            return StreamClassification(is_legacy_format=is_legacy_format, has_multiple_slices=slice_has_value)
+        # Determine the format type based on the first slice.
+        # A non-StreamSlice object is considered legacy format.
+        is_legacy_format = not isinstance(first_slice, StreamSlice)
 
-        try:
-            # If stream_slices() returns multiple slices, this is also a substream that can potentially generate empty slices
-            next(mappings_or_slices)
-            return StreamClassification(is_legacy_format=is_legacy_format, has_multiple_slices=True)
-        except StopIteration:
-            # If the result of stream_slices() only returns a single empty stream slice, then we know this is a regular stream
-            return StreamClassification(is_legacy_format=is_legacy_format, has_multiple_slices=False)
+        # Determine if the first slice is considered "empty" based on its type and value.
+        # This logic determines the `slice_has_value` concept from the original code.
+        if is_legacy_format:
+            # Legacy format uses an empty dictionary ({}) to represent an empty slice.
+            first_slice_is_empty = (first_slice == {})
+        else:
+            # New format uses a specific StreamSlice object with empty partition and cursor_slice.
+            # Use the pre-created `_EMPTY_STREAM_SLICE` object for efficient comparison.
+            first_slice_is_empty = (first_slice == _EMPTY_STREAM_SLICE)
+
+        # Determine if there are potentially multiple slices.
+        # Initialize has_multiple_slices; its final value depends on whether the first slice
+        # was empty and if a second slice exists.
+        has_multiple_slices = False
+
+        if not first_slice_is_empty:
+            # If the first slice was not empty, the original code logic implies it's a substream
+            # scenario likely involving multiple slices. The original code effectively set
+            # has_multiple_slices = slice_has_value (which was True here).
+            has_multiple_slices = True
+        else:
+            # If the first slice was empty, we need to check if there's a second slice
+            # to determine if there are multiple slices in total.
+            try:
+                # Attempt to get the second slice. We only need to know if it exists, not its value.
+                next(mappings_or_slices)
+                # If successful, it means a second item was yielded, indicating multiple slices.
+                has_multiple_slices = True
+            except StopIteration:
+                # If the second next() call raises StopIteration, it means the iterator
+                # yielded exactly one item (the first slice, which was empty).
+                # The original code's second StopIteration handler returns (is_legacy_format, False).
+                has_multiple_slices = False
+
+        # Return the determined classification using the gathered boolean values.
+        return StreamClassification(is_legacy_format=is_legacy_format, has_multiple_slices=has_multiple_slices)
 
     def log_stream_sync_configuration(self) -> None:
         """
