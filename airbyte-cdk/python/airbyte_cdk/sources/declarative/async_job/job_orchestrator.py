@@ -137,8 +137,8 @@ class AsyncJobOrchestrator:
         where the child has taken up all the job budget without room to the parent to create more which would lead to an infinite loop of
         "trying to start a parent job" and "ConcurrentJobLimitReached".
         """
-        if {*AsyncJobStatus} != self._KNOWN_JOB_STATUSES:
-            # this is to prevent developers updating the possible statuses without updating the logic of this class
+        if set(AsyncJobStatus) != self._KNOWN_JOB_STATUSES:
+            # this is to prevent developers from updating the possible statuses without updating the logic of this class
             raise ValueError(
                 "An AsyncJobStatus has been either removed or added which means the logic of this class needs to be reviewed. Once the logic has been updated, please update _KNOWN_JOB_STATUSES"
             )
@@ -241,7 +241,8 @@ class AsyncJobOrchestrator:
         Returns:
             Set[AsyncJob]: A set of AsyncJob objects that are currently running.
         """
-        return {job for partition in self._running_partitions for job in partition.jobs if job.status() == AsyncJobStatus.RUNNING}
+        running_status = AsyncJobStatus.RUNNING
+        return {job for partition in self._running_partitions for job in partition.jobs if job.status() == running_status}
 
     def _update_jobs_status(self) -> None:
         """
