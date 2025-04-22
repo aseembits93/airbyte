@@ -20,7 +20,10 @@ def get_stream(catalog: AirbyteCatalog, stream_name: str) -> Optional[AirbyteStr
 
 
 def get_stream_names(catalog: AirbyteCatalog) -> List[str]:
-    return [stream.name for stream in catalog.streams]
+    stream_names = []
+    for stream in catalog.streams:
+        stream_names.append(stream.name)
+    return stream_names
 
 
 def to_configured_stream(
