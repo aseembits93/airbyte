@@ -85,8 +85,11 @@ class SchemaInferrer:
     stream_to_builder: Dict[str, SchemaBuilder]
 
     def __init__(self, pk: Optional[List[List[str]]] = None, cursor_field: Optional[List[List[str]]] = None) -> None:
+        # Initialize stream_to_builder using defaultdict with NoRequiredSchemaBuilder
         self.stream_to_builder = defaultdict(NoRequiredSchemaBuilder)
+        # Initialize primary key list, handling None case
         self._pk = [] if pk is None else pk
+        # Initialize cursor field list, handling None case
         self._cursor_field = [] if cursor_field is None else cursor_field
 
     def accumulate(self, record: AirbyteRecordMessage) -> None:
@@ -228,7 +231,9 @@ class SchemaInferrer:
         self._add_field_as_required(node[_PROPERTIES][next_node], path[1:], traveled_path)
 
     def _is_leaf(self, path: List[str]) -> bool:
-        return len(path) == 0
+        # Check if the path is a leaf (empty list) by checking its truthiness.
+        # An empty list is considered falsy in Python.
+        return not path
 
     def _remove_null_from_type(self, node: InferredSchema) -> None:
         if isinstance(node[_TYPE], list):
