@@ -1,6 +1,5 @@
 # Copyright (c) 2023 Airbyte, Inc., all rights reserved.
 
-import functools
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path as FilePath
@@ -11,7 +10,24 @@ from airbyte_cdk.test.utils.data import get_unit_test_folder
 
 
 def _extract(path: List[str], response_template: Dict[str, Any]) -> Any:
-    return functools.reduce(lambda a, b: a[b], path, response_template)
+    """
+    Extracts a nested value from a dictionary based on a list of keys.
+
+    Args:
+        path: A list of strings representing the path of keys to traverse.
+        response_template: The dictionary to traverse.
+
+    Returns:
+        The value found at the end of the path.
+
+    Raises:
+        KeyError: If any key in the path is not found in the dictionary.
+    """
+    current_level = response_template
+    # Iterate through the path and access the nested dictionary/list element
+    for key in path:
+        current_level = current_level[key]
+    return current_level
 
 
 def _replace_value(dictionary: Dict[str, Any], path: List[str], value: Any) -> None:
