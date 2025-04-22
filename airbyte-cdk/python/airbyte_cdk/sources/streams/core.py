@@ -559,16 +559,20 @@ class Stream(ABC):
         if isinstance(keys, str):
             return [[keys]]
         elif isinstance(keys, list):
-            wrapped_keys = []
-            for component in keys:
-                if isinstance(component, str):
-                    wrapped_keys.append([component])
-                elif isinstance(component, list):
-                    wrapped_keys.append(component)
-                else:
-                    raise ValueError(f"Element must be either list or str. Got: {type(component)}")
-            return wrapped_keys
+            # Optimized by replacing the explicit loop with a list comprehension.
+            # List comprehensions are often faster in Python for list transformations
+            # as they can be more optimized internally than manual loops and appends.
+            # Error handling for invalid elements is embedded within the comprehension
+            # using a conditional expression and the _raise_element_error helper method,
+            # preserving the original behavior of raising an error on the first invalid element.
+            return [
+                ([component] if isinstance(component, str) else
+                 (component if isinstance(component, list) else
+                  Stream._raise_element_error(type(component))))
+                for component in keys
+            ]
         else:
+            # Handle the case where keys is not None, str, or list (e.g., int, dict, tuple)
             raise ValueError(f"Element must be either list or str. Got: {type(keys)}")
 
     def _observe_state(self, checkpoint_reader: CheckpointReader, stream_state: Optional[Mapping[str, Any]] = None) -> None:
@@ -642,3 +646,9 @@ class Stream(ABC):
             valid_configured_schema_properties[configured_schema_property] = stream_schema_properties[configured_schema_property]
 
         return {**configured_catalog_json_schema, "properties": valid_configured_schema_properties}
+
+    # New helper static method for cleaner error handling in list comprehension
+    @staticmethod
+    def _raise_element_error(component_type):
+        """Helper to raise a consistent ValueError for invalid list elements."""
+        raise ValueError(f"Element must be either list or str. Got: {component_type}")
