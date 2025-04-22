@@ -328,9 +328,12 @@ class MessageGrouper:
 
     @staticmethod
     def _create_response_from_log_message(json_http_message: Dict[str, Any]) -> HttpResponse:
-        response = json_http_message.get("http", {}).get("response", {})
-        body = response.get("body", {}).get("content", "")
-        return HttpResponse(status=response.get("status_code"), body=body, headers=response.get("headers"))
+        http_response = json_http_message.get("http", {}).get("response", {})
+        body = http_response.get("body", {}).get("content", "")
+        # Access headers directly to avoid calling get method multiple times
+        status = http_response.get("status_code")
+        headers = http_response.get("headers")
+        return HttpResponse(status=status, body=body, headers=headers)
 
     def _has_reached_limit(self, slices: List[StreamReadSlices]) -> bool:
         if len(slices) >= self._max_slices:
