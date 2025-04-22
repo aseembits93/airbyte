@@ -59,16 +59,17 @@ class MessageGrouper:
         return field  # type: ignore  # the type of field is expected to be List[List[str]] here
 
     def _cursor_field_to_nested_and_composite_field(self, field: Union[str, List[str]]) -> List[List[str]]:
+        # Simple cases first: if field is not provided or is a string
         if not field:
             return [[]]
-
-        if isinstance(field, str):
+        elif isinstance(field, str):
             return [[field]]
-
-        is_nested_key = isinstance(field[0], str)
-        if is_nested_key:
+        
+        # If the field is a list and its first element is a string, return it directly
+        if isinstance(field[0], str):
             return [field]  # type: ignore  # the type of field is expected to be List[str] here
-
+        
+        # If the input doesn't match expected types, raise an error
         raise ValueError(f"Unknown type for cursor field `{field}")
 
     def get_message_groups(
