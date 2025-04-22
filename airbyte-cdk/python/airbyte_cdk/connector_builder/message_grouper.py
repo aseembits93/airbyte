@@ -52,11 +52,12 @@ class MessageGrouper:
         if isinstance(field, str):
             return [[field]]
 
-        is_composite_key = isinstance(field[0], str)
-        if is_composite_key:
-            return [[i] for i in field]  # type: ignore  # the type of field is expected to be List[str] here
+        # Check type of the first element only once to determine if it's a composite key
+        if isinstance(field[0], str):
+            return [[i] for i in field]  # the type of field is expected to be List[str] here
 
-        return field  # type: ignore  # the type of field is expected to be List[List[str]] here
+        # Directly return the field assuming it is of type List[List[str]]
+        return field  # the type of field is expected to be List[List[str]] here
 
     def _cursor_field_to_nested_and_composite_field(self, field: Union[str, List[str]]) -> List[List[str]]:
         if not field:
