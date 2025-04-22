@@ -115,9 +115,11 @@ class LogAppenderMessageRepositoryDecorator(MessageRepository):
                 if isinstance(first[key], dict) and isinstance(second[key], dict):
                     self._append_second_to_first(first[key], second[key], path + [str(key)])  # type: ignore # type is verified above
                 else:
-                    if first[key] != second[key]:
-                        _LOGGER.warning("Conflict at %s" % ".".join(path + [str(key)]))
+                    # Log only if the levels are appropriate
+                    if first[key] != second[key] and _SEVERITY_BY_LOG_LEVEL[self._log_level] <= _SEVERITY_BY_LOG_LEVEL[Level.WARN]:
+                        _LOGGER.warning(f"Conflict at {'.'.join(path + [str(key)])}")
                     first[key] = second[key]
             else:
                 first[key] = second[key]
+
         return first
