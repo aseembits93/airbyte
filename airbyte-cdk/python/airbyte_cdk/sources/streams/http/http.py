@@ -511,15 +511,23 @@ class HttpSubStream(HttpStream, ABC):
 
 @deprecated(version="3.0.0", reason="You should set backoff_strategies explicitly in HttpStream.get_backoff_strategy() instead.")
 class HttpStreamAdapterBackoffStrategy(BackoffStrategy):
-    def __init__(self, stream: HttpStream):
+    def __init__(self, stream):
+        # Store the stream
         self.stream = stream
+        # Bind the backoff_time method from the stream once during initialization
+        # to avoid repeated attribute lookups in the hot path of the backoff_time method.
+        # This micro-optimization can slightly improve performance when the method
+        # is called frequently.
+        self._stream_backoff_time = self.stream.backoff_time
 
     def backoff_time(
         self,
         response_or_exception: Optional[Union[requests.Response, requests.RequestException]],
         attempt_count: int,
     ) -> Optional[float]:
-        return self.stream.backoff_time(response_or_exception)  # type: ignore # noqa  # HttpStream.backoff_time has been deprecated
+        # Delegate the call to the bound method stored during initialization.
+        # This method is deprecated as it relies on a deprecated method in HttpStream.
+        return self._stream_backoff_time(response_or_exception)  # type: ignore # noqa  # HttpStream.backoff_time has been deprecated
 
 
 @deprecated(version="3.0.0", reason="You should set error_handler explicitly in HttpStream.get_error_handler() instead.")
