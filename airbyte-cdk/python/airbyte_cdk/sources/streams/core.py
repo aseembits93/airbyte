@@ -502,39 +502,35 @@ class Stream(ABC):
         Both attributes can eventually be deprecated once stream's define this method deleted once substreams have been implemented and
         legacy connectors all adhere to the StreamSlice object.
         """
-        if not mappings_or_slices:
-            raise ValueError("A stream should always have at least one slice")
         try:
             next_slice = next(mappings_or_slices)
-            if isinstance(next_slice, StreamSlice) and next_slice == StreamSlice(partition={}, cursor_slice={}):
-                is_legacy_format = False
-                slice_has_value = False
-            elif next_slice == {}:
-                is_legacy_format = True
-                slice_has_value = False
-            elif isinstance(next_slice, StreamSlice):
-                is_legacy_format = False
-                slice_has_value = True
-            else:
-                is_legacy_format = True
-                slice_has_value = True
         except StopIteration:
             # If the stream has no slices, the format ultimately does not matter since no data will get synced. This is technically
             # a valid case because it is up to the stream to define its slicing behavior
             return StreamClassification(is_legacy_format=False, has_multiple_slices=False)
 
-        if slice_has_value:
-            # If the first slice contained a partition value from the result of stream_slices(), this is a substream that might
-            # have multiple parent records to iterate over
-            return StreamClassification(is_legacy_format=is_legacy_format, has_multiple_slices=slice_has_value)
+        if isinstance(next_slice, StreamSlice):
+            if next_slice == StreamSlice(partition={}, cursor_slice={}):
+                is_legacy_format = False
+                has_multiple_slices = False
+            else:
+                is_legacy_format = False
+                has_multiple_slices = True
+        elif next_slice == {}:
+            is_legacy_format = True
+            has_multiple_slices = False
+        else:
+            is_legacy_format = True
+            has_multiple_slices = True
 
-        try:
-            # If stream_slices() returns multiple slices, this is also a substream that can potentially generate empty slices
-            next(mappings_or_slices)
-            return StreamClassification(is_legacy_format=is_legacy_format, has_multiple_slices=True)
-        except StopIteration:
-            # If the result of stream_slices() only returns a single empty stream slice, then we know this is a regular stream
-            return StreamClassification(is_legacy_format=is_legacy_format, has_multiple_slices=False)
+        if not has_multiple_slices:
+            try:
+                next(mappings_or_slices)
+                has_multiple_slices = True
+            except StopIteration:
+                has_multiple_slices = False
+
+        return StreamClassification(is_legacy_format=is_legacy_format, has_multiple_slices=has_multiple_slices)
 
     def log_stream_sync_configuration(self) -> None:
         """
