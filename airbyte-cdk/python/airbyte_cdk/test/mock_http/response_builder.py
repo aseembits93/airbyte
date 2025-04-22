@@ -11,7 +11,10 @@ from airbyte_cdk.test.utils.data import get_unit_test_folder
 
 
 def _extract(path: List[str], response_template: Dict[str, Any]) -> Any:
-    return functools.reduce(lambda a, b: a[b], path, response_template)
+    current = response_template
+    for key in path:
+        current = current[key]
+    return current
 
 
 def _replace_value(dictionary: Dict[str, Any], path: List[str], value: Any) -> None:
