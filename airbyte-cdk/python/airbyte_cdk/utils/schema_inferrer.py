@@ -193,11 +193,19 @@ class SchemaInferrer:
         """
         Take a nested key and travel the schema to mark every node as required.
         """
-        self._remove_null_from_type(node)
-        if self._is_leaf(path):
+        # Optimized version of `_remove_null_from_type`
+        node_type = node[_TYPE]
+        if isinstance(node_type, list):
+            if _NULL_TYPE in node_type:
+                node_type.remove(_NULL_TYPE)
+            if len(node_type) == 1:
+                node[_TYPE] = node_type[0]
+
+        # Inlining `_is_leaf` function to avoid function call overhead
+        if len(path) == 0:
             return
 
-        if not traveled_path:
+        if traveled_path is None:
             traveled_path = []
 
         if _PROPERTIES not in node:
@@ -207,7 +215,8 @@ class SchemaInferrer:
             )
 
         next_node = path[0]
-        if next_node not in node[_PROPERTIES]:
+        node_properties = node[_PROPERTIES]
+        if next_node not in node_properties:
             raise ValueError(f"Path {traveled_path} does not have field `{next_node}` in the schema and hence can't be marked as required.")
 
         if _TYPE not in node:
@@ -219,13 +228,14 @@ class SchemaInferrer:
         if node[_TYPE] not in [_OBJECT_TYPE, [_NULL_TYPE, _OBJECT_TYPE], [_OBJECT_TYPE, _NULL_TYPE]]:
             raise ValueError(f"Path {traveled_path} is expected to be an object but was of type `{node['properties'][next_node]['type']}`")
 
-        if _REQUIRED not in node or not node[_REQUIRED]:
+        node_required = node.get(_REQUIRED)
+        if node_required is None or not node_required:
             node[_REQUIRED] = [next_node]
-        elif next_node not in node[_REQUIRED]:
+        elif next_node not in node_required:
             node[_REQUIRED].append(next_node)
 
         traveled_path.append(next_node)
-        self._add_field_as_required(node[_PROPERTIES][next_node], path[1:], traveled_path)
+        self._add_field_as_required(node_properties[next_node], path[1:], traveled_path)
 
     def _is_leaf(self, path: List[str]) -> bool:
         return len(path) == 0
@@ -246,3 +256,7 @@ class SchemaInferrer:
             if stream_name in self.stream_to_builder
             else None
         )
+
+
+def NoRequiredSchemaBuilder():
+    return SchemaBuilder()
