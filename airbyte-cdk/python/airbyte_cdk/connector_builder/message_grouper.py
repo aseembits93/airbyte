@@ -39,7 +39,6 @@ from airbyte_cdk.utils.schema_inferrer import SchemaInferrer, SchemaValidationEx
 
 class MessageGrouper:
     logger = logging.getLogger("airbyte.connector-builder")
-
     def __init__(self, max_pages_per_slice: int, max_slices: int, max_record_limit: int = 1000):
         self._max_pages_per_slice = max_pages_per_slice
         self._max_slices = max_slices
@@ -258,6 +257,7 @@ class MessageGrouper:
 
     @staticmethod
     def _is_http_log(message: Dict[str, JsonType]) -> bool:
+        # Inline the function for removing the overhead of an unnecessary function call.
         return bool(message.get("http", False))
 
     @staticmethod
@@ -270,9 +270,12 @@ class MessageGrouper:
         """
         if not message:
             return False
-
-        is_http = MessageGrouper._is_http_log(message)
-        return is_http and message.get("http", {}).get("is_auxiliary", False)
+        
+        http = message.get("http")
+        if not http:
+            return False
+        
+        return http.get("is_auxiliary", False)
 
     @staticmethod
     def _close_page(
