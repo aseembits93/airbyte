@@ -57,9 +57,12 @@ class SchemaValidationException(Exception):
     @classmethod
     def merge_exceptions(cls, exceptions: List["SchemaValidationException"]) -> "SchemaValidationException":
         # We assume the schema is the same for all SchemaValidationException
-        return SchemaValidationException(exceptions[0].schema, [x for exception in exceptions for x in exception._validation_errors])
+        all_validation_errors = []
+        for exception in exceptions:
+            all_validation_errors.extend(exception._validation_errors)
+        return SchemaValidationException(exceptions[0]._schema, all_validation_errors)
 
-    def __init__(self, schema: InferredSchema, validation_errors: List[Exception]):
+    def __init__(self, schema: Dict[str, Any], validation_errors: List[Exception]):
         self._schema = schema
         self._validation_errors = validation_errors
 
