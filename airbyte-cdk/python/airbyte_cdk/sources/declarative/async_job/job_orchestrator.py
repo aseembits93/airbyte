@@ -6,7 +6,7 @@ import time
 import traceback
 import uuid
 from datetime import timedelta
-from typing import Any, Generator, Generic, Iterable, List, Mapping, Optional, Set, Tuple, Type, TypeVar
+from typing import Any, Generator, Generic, Iterable, List, Mapping, Optional, Set, Type, TypeVar
 
 from airbyte_cdk import StreamSlice
 from airbyte_cdk.logger import lazy_log
@@ -148,7 +148,7 @@ class AsyncJobOrchestrator:
         self._running_partitions: List[AsyncPartition] = []
         self._job_tracker = job_tracker
         self._message_repository = message_repository
-        self._exceptions_to_break_on: Tuple[Type[Exception], ...] = tuple(exceptions_to_break_on)
+        self._exceptions_to_break_on: Set[Type[Exception]] = set(exceptions_to_break_on)
         self._has_bulk_parent = has_bulk_parent
 
         self._non_breaking_exceptions: List[Exception] = []
@@ -424,7 +424,7 @@ class AsyncJobOrchestrator:
         self._running_partitions = []
 
     def _is_breaking_exception(self, exception: Exception) -> bool:
-        return isinstance(exception, self._exceptions_to_break_on) or (
+        return isinstance(exception, tuple(self._exceptions_to_break_on)) or (
             isinstance(exception, AirbyteTracedException) and exception.failure_type == FailureType.config_error
         )
 
